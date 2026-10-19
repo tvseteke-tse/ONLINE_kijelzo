@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<title>Csapat Teke (4 fő) - Eredményjelző</title>
+<style>
+    body {
+        background-color: #00122e;
+        color: #ffff00;
+        margin: 0;
+        padding: 20px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        user-select: none;
+    }
+    .scoreboard {
+        background-color: #001c47;
+        border: 3px solid #0044aa;
+        border-radius: 12px;
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+        box-shadow: 0 0 30px rgba(0, 50, 150, 0.6);
+    }
+    .tournament-header {
+        text-align: center;
+        font-size: 2rem;
+        color: #ffff00;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        text-shadow: 0 0 10px rgba(255, 255, 0, 0.4);
+    }
+    .teams-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 2.2rem;
+        padding: 10px 20px;
+        border-bottom: 3px solid #0044aa;
+        color: #ffff00;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .board-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+        font-family: 'Courier New', Courier, monospace;
+    }
+    .board-table th { color: #ffff00; font-size: 1.1rem; padding: 10px; border-bottom: 2px solid #0044aa; }
+    .board-table td { padding: 14px 6px; text-align: center; font-size: 1.4rem; font-weight: bold; border-bottom: 1px solid #002b66; }
+    
+    .name-col { text-align: left !important; color: #ffff00; width: 22%; font-family: sans-serif; }
+    .name-col.right { text-align: right !important; }
+    
+    .val-set { color: #ffffff; }
+    .val-set.win { color: #00ff66; text-shadow: 0 0 8px rgba(0, 255, 102, 0.5); }
+    .val-set.lose { color: #ff3333; text-shadow: 0 0 8px rgba(255, 51, 51, 0.5); }
+    .val-set.draw { color: #ffff00; text-shadow: 0 0 8px rgba(255, 255, 0, 0.5); }
+    
+    .val-sp { color: #ffffff; }
+    .val-ges { color: #ffffff; font-size: 1.5rem; }
+    .val-ges.win { color: #00ff66; }
+    .val-mp { color: #ffff00; background-color: #00122e; }
+    .divider { border-left: 2px solid #0044aa; border-right: 2px solid #0044aa; }
+    
+    .footer-score {
+        margin-top: 20px;
+        border-top: 3px solid #0044aa;
+        padding-top: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 1.8rem;
+        font-family: sans-serif;
+        color: #ffffff;
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    .footer-team-block {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+    }
+    .footer-label { color: #8b949e; font-size: 1.2rem; }
+    .footer-val { color: #ffff00; font-weight: bold; }
+    .total-mp { color: #00ff66; font-size: 3.2rem; font-weight: bold; text-shadow: 0 0 12px rgba(0, 255, 102, 0.4); }
+</style>
+
+<!-- Firebase SDK-k -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<div class="scoreboard">
+    <div class="tournament-header" id="dispTitle">BAJNOKI MÉRKŐZÉS (4 FŐ)</div>
+    <div class="teams-header">
+        <span id="dispTeam1">HAZAI</span>
+        <span id="dispTeam2">VENDÉG</span>
+    </div>
+
+    <table class="board-table">
+        <thead>
+            <tr>
+                <th class="name-col">Név</th>
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>SP</th>
+                <th>Össz.</th>
+                <th>MP</th>
+                <th>Össz.</th>
+                <th>SP</th>
+                <th>4</th><th>3</th><th>2</th><th>1</th>
+                <th class="name-col right">Név</th>
+            </tr>
+        </thead>
+        <tbody id="boardBody"></tbody>
+    </table>
+
+    <div class="footer-score">
+        <div class="footer-team-block">
+            <div><span class="footer-label">SP:</span> <span class="footer-val" id="totalSP1">0</span></div>
+            <div><span class="footer-label">Össz:</span> <span class="footer-val" id="totalGes1">0</span></div>
+        </div>
+        
+        <div class="total-mp" id="totalMP">0 : 0</div>
+        
+        <div class="footer-team-block">
+            <div><span class="footer-label">Össz:</span> <span class="footer-val" id="totalGes2">0</span></div>
+            <div><span class="footer-label">SP:</span> <span class="footer-val" id="totalSP2">0</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "aizasyd8o7xyctxtjlqcm8z-29xtbopbxrybjom",
+    authDomain: "teke-eredmenyek.firebaseapp.com",
+    databaseURL: "https://teke-eredmenyek-default-rtdb.firebaseio.com",
+    projectId: "teke-eredmenyek",
+    storageBucket: "teke-eredmenyek.appspot.com"
+};
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.database();
+
+db.ref('bajnoki4_bowling').on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+        renderBoard(data);
+    }
+});
+
+function getSetClass(val1, val2) {
+    if (val1 === 0 && val2 === 0) return 'val-set';
+    if (val1 > val2) return 'val-set win';
+    if (val1 < val2) return 'val-set lose';
+    return 'val-set draw';
+}
+
+function renderBoard(data) {
+    if (data.title) document.getElementById('dispTitle').innerText = data.title.toUpperCase();
+    document.getElementById('dispTeam1').innerText = data.team1 || 'HAZAI';
+    document.getElementById('dispTeam2').innerText = data.team2 || 'VENDÉG';
+
+    const tbody = document.getElementById('boardBody');
+    tbody.innerHTML = '';
+    
+    let totalGes1 = 0, totalGes2 = 0;
+    let totalSp1 = 0, totalSp2 = 0;
+    let totalMp1 = 0, totalMp2 = 0;
+
+    if (data.pairs && Array.isArray(data.pairs)) {
+        data.pairs.forEach(row => {
+            const sum1 = row.p1Sets.reduce((a, b) => a + b, 0);
+            const sum2 = row.p2Sets.reduce((a, b) => a + b, 0);
+            
+            let sp1 = 0, sp2 = 0;
+            row.p1Sets.forEach((s1, idx) => {
+                const s2 = row.p2Sets[idx];
+                if (s1 > s2) sp1 += 1;
+                else if (s2 > s1) sp2 += 1;
+                else if (s1 > 0 || s2 > 0) { sp1 += 0.5; sp2 += 0.5; }
+            });
+
+            let mp1 = 0, mp2 = 0;
+            if (sum1 > 0 || sum2 > 0) {
+                if (sp1 > sp2) mp1 = 1;
+                else if (sp2 > sp1) mp2 = 1;
+                else if (sum1 > sum2) mp1 = 1;
+                else if (sum2 > sum1) mp2 = 1;
+                else { mp1 = 0.5; mp2 = 0.5; }
+            }
+
+            totalGes1 += sum1;
+            totalGes2 += sum2;
+            totalSp1 += sp1;
+            totalSp2 += sp2;
+            totalMp1 += mp1;
+            totalMp2 += mp2;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="name-col">${row.p1Name || '-'}</td>
+                ${row.p1Sets.map((s1, i) => `<td class="${getSetClass(s1, row.p2Sets[i])}">${s1 || ''}</td>`).join('')}
+                <td class="val-sp">${sp1}</td>
+                <td class="val-ges ${sum1 > sum2 && sum1 > 0 ? 'win' : ''}">${sum1}</td>
+                <td class="val-mp divider">${mp1}:${mp2}</td>
+                <td class="val-ges ${sum2 > sum1 && sum2 > 0 ? 'win' : ''}">${sum2}</td>
+                <td class="val-sp">${sp2}</td>
+                ${row.p2Sets.slice().reverse().map((s2, i) => {
+                    const origIdx = 3 - i;
+                    const s1 = row.p1Sets[origIdx];
+                    return `<td class="${getSetClass(s2, s1)}">${s2 || ''}</td>`;
+                }).join('')}
+                <td class="name-col right">${row.p2Name || '-'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    let teamBonus1 = 0, teamBonus2 = 0;
+    if (totalGes1 > totalGes2) teamBonus1 = 2;
+    else if (totalGes2 > totalGes1) teamBonus2 = 2;
+    else if (totalGes1 > 0 || totalGes2 > 0) { teamBonus1 = 1; teamBonus2 = 1; }
+
+    document.getElementById('totalSP1').innerText = totalSp1;
+    document.getElementById('totalSP2').innerText = totalSp2;
+    document.getElementById('totalGes1').innerText = totalGes1;
+    document.getElementById('totalGes2').innerText = totalGes2;
+    document.getElementById('totalMP').innerText = `${totalMp1 + teamBonus1} : ${totalMp2 + teamBonus2}`;
+}
+</script>
+</body>
+</html>

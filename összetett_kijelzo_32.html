@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Összetett Verseny Kijelző</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #4caf50;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #1e1e1e;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 14px 18px;
+            text-align: left;
+        }
+        th {
+            background-color: #2c2c2c;
+            color: #888;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            border-bottom: 2px solid #333;
+        }
+        tr {
+            border-bottom: 1px solid #2a2a2a;
+            transition: background 0.2s;
+        }
+        tr:hover {
+            background-color: #282828;
+        }
+        .rank {
+            font-weight: bold;
+            width: 60px;
+            text-align: center;
+            color: #ffca28;
+        }
+        .num-col {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .total-score {
+            font-weight: bold;
+            color: #4caf50;
+            font-size: 1.1rem;
+        }
+        .top-1 { background-color: rgba(255, 215, 0, 0.1); }
+        .top-2 { background-color: rgba(192, 192, 192, 0.1); }
+        .top-3 { background-color: rgba(205, 127, 50, 0.1); }
+    </style>
+</head>
+<body>
+
+    <h1>Összetett Verseny Eredmények</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th class="rank">#</th>
+                <th>Név</th>
+                <th>Egyesület</th>
+                <th class="num-col">Egyéni (fa)</th>
+                <th class="num-col">Sprint Max (fa)</th>
+                <th class="num-col">Összetett (fa)</th>
+            </tr>
+        </thead>
+        <tbody id="standings-body">
+            <tr><td colspan="6" style="text-align:center;">Adatok betöltése...</td></tr>
+        </tbody>
+    </table>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyD8o7xyCtxTJlQcM8z-29XTBOpBXrYbjOM",
+            authDomain: "teke-eredmenyek.firebaseapp.com",
+            databaseURL: "https://teke-eredmenyek-default-rtdb.firebaseio.com",
+            projectId: "teke-eredmenyek",
+            storageBucket: "teke-eredmenyek.appspot.com",
+            messagingSenderId: "550402585638",
+            appId: "1:550402585638:web:f2457753e94d4610ede2e7"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const standingsBody = document.getElementById('standings-body');
+
+        let egyeniData = {};
+        let sprintMatches = {};
+
+        // Segédfunkció számértékek biztonságos kinyerésére
+        function getNum(val) {
+            const parsed = parseInt(val, 10);
+            return isNaN(parsed) ? 0 : parsed;
+        }
+
+        // Segédfunkció nevek egységesítésére az összehasonlításhoz
+        function normalizeName(name) {
+            if (!name) return '';
+            return name.trim().toLowerCase().replace(/\s+/g, ' ');
+        }
+
+        // Összes mérkőzés összegyűjtése (a beágyazott struktúrákból is)
+        function extractMatches(obj) {
+            let matches = [];
+            if (!obj || typeof obj !== 'object') return matches;
+
+            // Ha az objektum maga egy meccs (tartalmaz játékosnevet)
+            if (obj.p1_name || obj.p1_nev || obj.player1_name || obj.p2_name || obj.p2_nev || obj.player2_name) {
+                matches.push(obj);
+            } else {
+                // Ha beágyazott objektumok vannak (pl. fordulók)
+                Object.keys(obj).forEach(key => {
+                    if (key !== 'title' && typeof obj[key] === 'object') {
+                        matches = matches.concat(extractMatches(obj[key]));
+                    }
+                });
+            }
+            return matches;
+        }
+
+        function updateCombinedStandings() {
+            const playersMap = {}; // Kulcs: normalizált név
+
+            // 1. EGYÉNI ADATOK FELDOLGOZÁSA
+            if (egyeniData) {
+                Object.keys(egyeniData).forEach(key => {
+                    const p = egyeniData[key];
+                    const rawName = p.nev || p.name || p.jatekos;
+                    if (!rawName) return;
+
+                    const normName = normalizeName(rawName);
+                    const egyeniFa = getNum(p.ossz || p.fa || p.osszesen || p.total || p.egyeniFa);
+                    const egyesulet = p.egyesulet || p.klub || p.club || p.csapat || '-';
+
+                    playersMap[normName] = {
+                        displayName: rawName.trim(),
+                        egyesulet: egyesulet,
+                        egyeniFa: egyeniFa,
+                        sprintMaxFa: 0
+                    };
+                });
+            }
+
+            // 2. SPRINT ADATOK FELDOLGOZÁSA
+            if (sprintMatches) {
+                const allMatches = extractMatches(sprintMatches);
+
+                allMatches.forEach(m => {
+                    // JÁTÉKOS 1
+                    const rawName1 = m.p1_name || m.player1_name || m.p1_nev || m.p1_jatekos;
+                    if (rawName1) {
+                        const norm1 = normalizeName(rawName1);
+                        const s1 = getNum(m.p1_s1_fa || m.p1_sz1 || m.p1_s1 || m.p1_szett1 || m.p1_set1);
+                        const s2 = getNum(m.p1_s2_fa || m.p1_sz2 || m.p1_s2 || m.p1_szett2 || m.p1_set2);
+                        const meccsszetFa = s1 + s2;
+                        const club1 = m.p1_club || m.p1_egyesulet || m.p1_klub || '-';
+
+                        if (!playersMap[norm1]) {
+                            playersMap[norm1] = {
+                                displayName: rawName1.trim(),
+                                egyesulet: club1,
+                                egyeniFa: 0,
+                                sprintMaxFa: meccsszetFa
+                            };
+                        } else {
+                            if (meccsszetFa > playersMap[norm1].sprintMaxFa) {
+                                playersMap[norm1].sprintMaxFa = meccsszetFa;
+                            }
+                            if ((playersMap[norm1].egyesulet === '-' || !playersMap[norm1].egyesulet) && club1 !== '-') {
+                                playersMap[norm1].egyesulet = club1;
+                            }
+                        }
+                    }
+
+                    // JÁTÉKOS 2
+                    const rawName2 = m.p2_name || m.player2_name || m.p2_nev || m.p2_jatekos;
+                    if (rawName2) {
+                        const norm2 = normalizeName(rawName2);
+                        const s1 = getNum(m.p2_s1_fa || m.p2_sz1 || m.p2_s1 || m.p2_szett1 || m.p2_set1);
+                        const s2 = getNum(m.p2_s2_fa || m.p2_sz2 || m.p2_s2 || m.p2_szett2 || m.p2_set2);
+                        const meccsszetFa = s1 + s2;
+                        const club2 = m.p2_club || m.p2_egyesulet || m.p2_klub || '-';
+
+                        if (!playersMap[norm2]) {
+                            playersMap[norm2] = {
+                                displayName: rawName2.trim(),
+                                egyesulet: club2,
+                                egyeniFa: 0,
+                                sprintMaxFa: meccsszetFa
+                            };
+                        } else {
+                            if (meccsszetFa > playersMap[norm2].sprintMaxFa) {
+                                playersMap[norm2].sprintMaxFa = meccsszetFa;
+                            }
+                            if ((playersMap[norm2].egyesulet === '-' || !playersMap[norm2].egyesulet) && club2 !== '-') {
+                                playersMap[norm2].egyesulet = club2;
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 3. ÖSSZETETT ADATOK RENDEZÉSE
+            let combinedList = Object.values(playersMap).map(p => ({
+                ...p,
+                osszetettFa: p.egyeniFa + p.sprintMaxFa
+            }));
+
+            // Csak a pontot szerző játékosok megjelenítése
+            combinedList = combinedList.filter(p => p.osszetettFa > 0);
+
+            // Rendezés: 1. Összetett fa (csökkenő), 2. Egyéni fa (csökkenő)
+            combinedList.sort((a, b) => {
+                if (b.osszetettFa !== a.osszetettFa) {
+                    return b.osszetettFa - a.osszetettFa;
+                }
+                return b.egyeniFa - a.egyeniFa;
+            });
+
+            // 4. KIJELZŐ TÁBLÁZAT FRISSÍTÉSE
+            standingsBody.innerHTML = '';
+            if (combinedList.length === 0) {
+                standingsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Nincs megjeleníthető adat</td></tr>';
+                return;
+            }
+
+            combinedList.forEach((player, index) => {
+                const rank = index + 1;
+                let rowClass = '';
+                if (rank === 1) rowClass = 'top-1';
+                if (rank === 2) rowClass = 'top-2';
+                if (rank === 3) rowClass = 'top-3';
+
+                const tr = document.createElement('tr');
+                if (rowClass) tr.classList.add(rowClass);
+
+                tr.innerHTML = `
+                    <td class="rank">${rank}.</td>
+                    <td><strong>${player.displayName}</strong></td>
+                    <td>${player.egyesulet}</td>
+                    <td class="num-col">${player.egyeniFa}</td>
+                    <td class="num-col">${player.sprintMaxFa}</td>
+                    <td class="num-col total-score">${player.osszetettFa}</td>
+                `;
+                standingsBody.appendChild(tr);
+            });
+        }
+
+        // Egyéni adatok valós idejű figyelése
+        db.ref('egyeni_bowling/players').on('value', (snapshot) => {
+            egyeniData = snapshot.val() || {};
+            updateCombinedStandings();
+        });
+
+        // Sprint meccsek valós idejű figyelése
+        db.ref('torna_32').on('value', (snapshot) => {
+            sprintMatches = snapshot.val() || {};
+            updateCombinedStandings();
+        });
+    </script>
+</body>
+</html>

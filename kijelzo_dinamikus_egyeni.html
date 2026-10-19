@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<title>Egyéni Teke - Élő Ranglista</title>
+<style>
+    body {
+        background-color: #00122e;
+        color: #ffff00;
+        margin: 0;
+        padding: 15px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        user-select: none;
+    }
+    .board-container {
+        max-width: 1300px;
+        margin: 0 auto;
+        background: #001c47;
+        border: 3px solid #0044aa;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 0 25px rgba(0, 50, 150, 0.6);
+    }
+    h1 {
+        text-align: center;
+        margin: 0 0 15px 0;
+        font-size: 2.2rem;
+        color: #ffff00;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        text-shadow: 0 0 10px rgba(255, 255, 0, 0.4);
+    }
+    table { width: 100%; border-collapse: collapse; font-family: 'Courier New', Courier, monospace; }
+    th { color: #ffff00; border-bottom: 2px solid #0044aa; padding: 8px 4px; font-size: 1rem; }
+    td { padding: 8px 4px; text-align: center; border-bottom: 1px solid #002b66; font-size: 1.15rem; font-weight: bold; }
+    
+    .rank-col { width: 45px; color: #ffffff; font-weight: bold; text-align: center; }
+    .name-col { text-align: left; font-family: sans-serif; color: #ffff00; width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .team-col { text-align: left; font-family: sans-serif; color: #00ff66; width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 1rem; }
+    .stat-col { color: #8b949e; font-size: 1.1rem; }
+    
+    .color-green { color: #00ff66 !important; text-shadow: 0 0 5px rgba(0, 255, 102, 0.4); }
+    .color-yellow { color: #ffff00 !important; text-shadow: 0 0 5px rgba(255, 255, 0, 0.4); }
+    .color-red { color: #ff3333 !important; text-shadow: 0 0 5px rgba(255, 51, 51, 0.4); }
+
+    .total-col { font-weight: bold; font-size: 1.3rem; }
+    tr.top3 { background-color: rgba(0, 68, 170, 0.4); }
+    tr.top3 .rank-col { color: #ffff00; font-size: 1.25rem; }
+</style>
+
+<!-- Firebase SDK-k -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<div class="board-container">
+    <h1 id="boardTitle">EGYÉNI BAJNOKSÁG</h1>
+    <table>
+        <thead>
+            <tr>
+                <th class="rank-col">#</th>
+                <th class="name-col">Név</th>
+                <th class="team-col">Csapat</th>
+                <th>S1</th><th>S2</th><th>S3</th><th>S4</th>
+                <th>Teli</th>
+                <th>Tarol</th>
+                <th>Üres</th>
+                <th class="total-col">Össz.</th>
+            </tr>
+        </thead>
+        <tbody id="boardBody"></tbody>
+    </table>
+</div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "aizasyd8o7xyctxtjlqcm8z-29xtbopbxrybjom",
+    authDomain: "teke-eredmenyek.firebaseapp.com",
+    databaseURL: "https://teke-eredmenyek-default-rtdb.firebaseio.com",
+    projectId: "teke-eredmenyek",
+    storageBucket: "teke-eredmenyek.appspot.com"
+};
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.database();
+
+db.ref('egyeni_dinamikus_bowling').on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+        if (data.title) document.getElementById('boardTitle').innerText = data.title.toUpperCase();
+        if (data.players) renderBoard(data.players);
+    }
+});
+
+function getSetColorClass(val) {
+    if (val === 0) return '';
+    if (val > 150) return 'color-green';
+    if (val < 120) return 'color-red';
+    return 'color-yellow';
+}
+
+function getTotalColorClass(val) {
+    if (val === 0) return '';
+    if (val > 600) return 'color-green';
+    if (val < 500) return 'color-red';
+    return 'color-yellow';
+}
+
+function getUresColorClass(val) {
+    if (val === 0) return 'color-green';
+    if (val <= 5) return 'color-yellow';
+    return 'color-red';
+}
+
+function renderBoard(players) {
+    const sorted = [...players].sort((a, b) => {
+        if (b.total !== a.total) return b.total - a.total;
+        if (b.tarol !== a.tarol) return b.tarol - a.tarol;
+        if (a.ures !== b.ures) return a.ures - b.ures;
+        return 0;
+    });
+
+    const body = document.getElementById('boardBody');
+    body.innerHTML = '';
+
+    let currentRank = 1;
+
+    sorted.forEach((player, index) => {
+        if (index > 0) {
+            const prev = sorted[index - 1];
+            const isEqual = (player.total === prev.total) && 
+                            (player.tarol === prev.tarol) && 
+                            (player.ures === prev.ures);
+            if (!isEqual) currentRank = index + 1;
+        }
+
+        const tr = document.createElement('tr');
+        if (currentRank <= 3 && player.total > 0) tr.className = 'top3';
+
+        const setsHTML = player.sets.map(s => {
+            if (s === 0) return `<td>-</td>`;
+            return `<td class="${getSetColorClass(s)}">${s}</td>`;
+        }).join('');
+
+        tr.innerHTML = `
+            <td class="rank-col">${currentRank}.</td>
+            <td class="name-col">${player.name || '-'}</td>
+            <td class="team-col">${player.team || '-'}</td>
+            ${setsHTML}
+            <td class="stat-col">${player.teli}</td>
+            <td class="stat-col">${player.tarol}</td>
+            <td class="stat-col ${getUresColorClass(player.ures)}">${player.ures}</td>
+            <td class="total-col ${getTotalColorClass(player.total)}">${player.total}</td>
+        `;
+
+        body.appendChild(tr);
+    });
+}
+</script>
+</body>
+</html>
